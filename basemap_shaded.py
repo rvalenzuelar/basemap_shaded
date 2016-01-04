@@ -25,7 +25,7 @@ def main():
 
 
 	fig,ax=plt.subplots()
-	plot_geomap(ax=ax,domain=2,cmap=warm)
+	plot_geomap(ax=ax,domain=0,cmap=warm)
 	plt.show()
 
 
@@ -42,21 +42,60 @@ def plot_geomap(ax=None,domain=0,cmap=None,blend_mode='overlay'):
 					urcrnrlat=geobound[1],
 					llcrnrlon=geobound[2],
 					urcrnrlon=geobound[3],
-					resolution='h',
+					resolution='c',
 					ax=ax)
 	
 	ls = LightSource(azdeg=15,altdeg=60)
 	rgb=ls.shade(dtm,cmap=cmap,vmin=0,vmax=1000,
 				blend_mode='soft',fraction=0.7)
 	m.imshow(rgb)
-	# m.drawcoastlines()
+	
+	rivers=get_rivers(mmap=m)
+	# m.plot(rivers)
+	ax.add_collection(rivers)
 
-	# m.drawrivers()
 
 	'Use a proxy artist for the colorbar'
 	im = m.imshow(dtm, cmap=cmap, vmin=0,vmax=1000,)
 	im.remove()
 	plt.colorbar(im)
+
+
+def get_rivers(mmap=None):
+
+	import shapefile
+	from matplotlib.patches import Polygon
+	# from matplotlib.collections import PatchCollection
+	from matplotlib.collections import LineCollection
+	
+	s=shapefile.Reader('./sonoma_rivers/sonoma_rivers')
+
+	shapes=s.shapes()
+	Nshp=len(shapes)
+
+	# lines=[]
+	# for n in range(Nshp):
+	# 	ptchs   = []
+	# 	pts     = np.asarray(shapes[n].points)
+	# 	prt     = shapes[n].parts
+	# 	par     = list(prt) + [pts.shape[0]]
+	# 	for pij in xrange(len(prt)):
+	# 		ptchs.append(Polygon(pts[par[pij]:par[pij+1]]))
+	# 	lines.append(PatchCollection(ptchs,facecolor='blue',edgecolor='blue', linewidths=.1))
+	segs=[]
+	for n in [0]:
+		pts = shapes[n].points
+		# print pts
+		lons,lats=zip(*pts)
+		# print lons
+		x, y = mmap(lons,lats)
+		segs.append(zip(x,y))
+	lines=LineCollection(segs)
+	lines.set_facecolors('b')
+	lines.set_edgecolors('b')
+	lines.set_linewidth(0.3)
+
+	return lines
 
 
 def plot_map(ax=None,domain=0,cmap=plt.cm.gist_earth,blend_mode='overlay'):
