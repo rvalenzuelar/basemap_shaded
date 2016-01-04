@@ -23,16 +23,25 @@ def main():
 	# plot_map(ax=ax[2],domain=2,cmap=warm)
 	# plt.show()
 
+	loc1={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22)}
+	loc2={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22), 'FRS':(38.51,-123.25)}
 
-	fig,ax=plt.subplots()
-	plot_geomap(ax=ax,domain=0,cmap=warm)
-	plt.show()
+	# fig,ax=plt.subplots(figsize=(10,12))
+	# plot_geomap(ax=ax,domain=1,cmap=warm, locations=loc2,colorbar=True)
+	# plt.show(block=False)
+
+	fig,ax=plt.subplots(1,2,figsize=(12,10))
+	plot_geomap(ax=ax[0],domain=0,cmap=warm, locations=loc2)
+	plot_geomap(ax=ax[1],domain=1,cmap=warm, locations=loc2,colorbar=True)
+	plt.subplots_adjust(wspace=0.05)
+	plt.show(block=False)
 
 
-def plot_geomap(ax=None,domain=0,cmap=None,blend_mode='overlay'):
+def plot_geomap(ax=None,domain=0,cmap=None,locations=None, colorbar=False,blend_mode='overlay'):
 
 
-	dtmfile='/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
+	# dtmfile='/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
+	dtmfile='/home/rvalenzuela/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
 
 	dtm,geobound = get_elevation(dtmfile=dtmfile,domain=domain)
 	dtm=np.flipud(dtm)
@@ -42,24 +51,37 @@ def plot_geomap(ax=None,domain=0,cmap=None,blend_mode='overlay'):
 					urcrnrlat=geobound[1],
 					llcrnrlon=geobound[2],
 					urcrnrlon=geobound[3],
-					resolution='c',
+					resolution='i',
 					ax=ax)
 	
 	ls = LightSource(azdeg=15,altdeg=60)
-	rgb=ls.shade(dtm,cmap=cmap,vmin=0,vmax=1000,
+	rgb=ls.shade(dtm,cmap=cmap,vmin=0,vmax=800,
 				blend_mode='soft',fraction=0.7)
 	m.imshow(rgb)
-	
+	# m.drawcoastlines()
+
+	if domain == 0:
+		deg_delta=0.2
+	else:
+		deg_delta=0.1
+	parallels=np.arange(-90,90,deg_delta)
+	meridians=np.arange(-180,180,deg_delta)
+	m.drawparallels(parallels,labels=[1,0,0,0],fontsize=10,labelstyle='+/-', fmt='%2.1f')
+	m.drawmeridians(meridians,labels=[0,0,0,1],fontsize=10,labelstyle='+/-', fmt='%2.1f')
+
+	if locations:
+		for loc,coord in locations.iteritems():
+			x,y = m(*coord[::-1])
+			m.scatter(x,y, 80,color='red')
+			plt.text(x,y,loc,ha='right',va='top')
+
 	rivers=get_rivers(mmap=m)
-	# m.plot(rivers)
 	ax.add_collection(rivers)
 
-
-	'Use a proxy artist for the colorbar'
-	im = m.imshow(dtm, cmap=cmap, vmin=0,vmax=1000,)
-	im.remove()
-	plt.colorbar(im)
-
+	if colorbar:
+		im = m.imshow(dtm, cmap=cmap, vmin=0,vmax=800)
+		im.remove()
+		cb=m.colorbar(im)
 
 def get_rivers(mmap=None):
 
@@ -73,27 +95,15 @@ def get_rivers(mmap=None):
 	shapes=s.shapes()
 	Nshp=len(shapes)
 
-	# lines=[]
-	# for n in range(Nshp):
-	# 	ptchs   = []
-	# 	pts     = np.asarray(shapes[n].points)
-	# 	prt     = shapes[n].parts
-	# 	par     = list(prt) + [pts.shape[0]]
-	# 	for pij in xrange(len(prt)):
-	# 		ptchs.append(Polygon(pts[par[pij]:par[pij+1]]))
-	# 	lines.append(PatchCollection(ptchs,facecolor='blue',edgecolor='blue', linewidths=.1))
 	segs=[]
-	for n in [0]:
+	for n in range(Nshp):
 		pts = shapes[n].points
-		# print pts
 		lons,lats=zip(*pts)
-		# print lons
 		x, y = mmap(lons,lats)
 		segs.append(zip(x,y))
 	lines=LineCollection(segs)
-	lines.set_facecolors('b')
 	lines.set_edgecolors('b')
-	lines.set_linewidth(0.3)
+	lines.set_linewidth(1)
 
 	return lines
 

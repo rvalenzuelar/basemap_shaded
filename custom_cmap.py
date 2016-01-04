@@ -18,24 +18,28 @@ import numpy as np
 
 def make_cmap(colors=None, position=None, bit=False):
 
+    lenco = len(colors)-0
+
     if isinstance(colors,str):
         colors=tint(name=colors)
         sea=np.asarray([0])
-        land=np.linspace(0.01,1,len(colors)-1)
+        land1=np.linspace(0.005,0.6,lenco-3)
+        land2=np.linspace(0.7,1,2)
+        land=np.append(land1,land2)
         position=np.append(sea,land)
         bit=True
-   
+    
     if position is None:
-        position = np.linspace(0,1,len(colors))
+        position = np.linspace(0,1,lenco)
     else:
-        if len(position) != len(colors):
+        if len(position) != lenco:
             sys.exit("position length must be the same as colors")
         elif position[0] != 0 or position[-1] != 1:
             sys.exit("position must start with 0 and end with 1")
 
     bit_rgb = np.linspace(0,1,256)
     if bit:
-        for i in range(len(colors)):
+        for i in range(lenco):
             colors[i] = (bit_rgb[colors[i][0]],
                          bit_rgb[colors[i][1]],
                          bit_rgb[colors[i][2]])
