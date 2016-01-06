@@ -11,56 +11,61 @@ from custom_cmap import make_cmap
 from mpl_toolkits.basemap import Basemap,cm
 
 
-def main():
+def main(plot=False):
 
-	# arid = make_cmap(colors='arid', bit=True)	
-	# cold = make_cmap(colors='cold_humid', bit=True)	
-	warm = make_cmap(colors='warm_humid')	
-
-	# fig,ax=plt.subplots(1,3,sharey=True)
-	# plot_map(ax=ax[0],domain=2,cmap=arid)
-	# plot_map(ax=ax[1],domain=2,cmap=cold)
-	# plot_map(ax=ax[2],domain=2,cmap=warm)
-	# plt.show()
-
-	loc1={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22)}
-	loc2={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22), 'FRS':(38.51,-123.25)}
-
-	# fig,ax=plt.subplots(figsize=(10,12))
-	# plot_geomap(ax=ax,domain=1,cmap=warm, locations=loc2,colorbar=True)
-	# plt.show(block=False)
-
-	fig,ax=plt.subplots(1,2,figsize=(12,10))
-	plot_geomap(ax=ax[0],domain=0,cmap=warm, locations=loc2)
-	plot_geomap(ax=ax[1],domain=1,cmap=warm, locations=loc2,colorbar=True)
-	plt.subplots_adjust(wspace=0.05)
-	plt.show(block=False)
+	if plot:
+		# arid = make_cmap(colors='arid', bit=True)	
+		# cold = make_cmap(colors='cold_humid', bit=True)	
+		warm = make_cmap(colors='warm_humid')	
 
 
-def plot_geomap(ax=None,domain=0,cmap=None,locations=None, colorbar=False,blend_mode='overlay'):
+		loc1={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22)}
+		loc2={'BBY':(38.32,-123.07), 'CZD':(38.61,-123.22), 'FRS':(38.51,-123.25)}
+
+		linesec={'origin':(38.1,-122.95), 'az':338.0, 'dist':160}
+
+		fig,ax=plt.subplots(figsize=(10,12))
+		plot_geomap(ax=ax,domain=0,cmap=warm, locations=loc2,colorbar=True,linesec=linesec)
+		plt.show(block=False)
+
+		# fig,ax=plt.subplots(1,2,figsize=(12,10))
+		# plot_geomap(ax=ax[0],domain=0,cmap=warm, locations=loc2)
+		# # plot_geomap(ax=ax[1],domain=1,cmap=warm, locations=loc2,colorbar=True)
+		# plt.subplots_adjust(wspace=0.05)
+		# plt.show(block=False)
 
 
+def plot_geomap(ax=None,shaded=True,domain=3,cmap=None,locations=None, 
+					colorbar=False,blend_mode='overlay',linesec=None):
+
+	' get elevation model '
 	# dtmfile='/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
 	dtmfile='/home/rvalenzuela/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
-
 	dtm,geobound = get_elevation(dtmfile=dtmfile,domain=domain)
 	dtm=np.flipud(dtm)
 
+	' make map axis '
 	m=Basemap(projection='merc',
 					llcrnrlat=geobound[0],
 					urcrnrlat=geobound[1],
 					llcrnrlon=geobound[2],
 					urcrnrlon=geobound[3],
-					resolution='i',
+					resolution='c',
 					ax=ax)
 	
-	ls = LightSource(azdeg=15,altdeg=60)
-	rgb=ls.shade(dtm,cmap=cmap,vmin=0,vmax=800,
-				blend_mode='soft',fraction=0.7)
-	m.imshow(rgb)
-	# m.drawcoastlines()
+	if shaded:
+		' make hill shaded image '
+		ls = LightSource(azdeg=15,altdeg=60)
+		rgb=ls.shade(dtm,cmap=cmap,vmin=0,vmax=800,
+					blend_mode='soft',fraction=0.7)
+		m.imshow(rgb)
+	else:
+		m.imshow(dtm,cmap=cmap,vmin=0,vmax=800)
 
+	' add parallels and meridians '
 	if domain == 0:
+		deg_delta=0.3
+	elif domain == 1:
 		deg_delta=0.2
 	else:
 		deg_delta=0.1
@@ -69,28 +74,48 @@ def plot_geomap(ax=None,domain=0,cmap=None,locations=None, colorbar=False,blend_
 	m.drawparallels(parallels,labels=[1,0,0,0],fontsize=10,labelstyle='+/-', fmt='%2.1f')
 	m.drawmeridians(meridians,labels=[0,0,0,1],fontsize=10,labelstyle='+/-', fmt='%2.1f')
 
+	' add locations '
 	if locations:
 		for loc,coord in locations.iteritems():
 			x,y = m(*coord[::-1])
 			m.scatter(x,y, 80,color='red')
 			plt.text(x,y,loc,ha='right',va='top')
 
+	' add section line '
+	if isinstance(linesec,dict):
+		pass
+	elif isinstance(linesec,list):
+		x1,y1=m(*linesec[0][::-1])
+		x2,y2=m(*linesec[1][::-1])
+		x,y=[[x1,x2], [y1,y2]]
+		xp=np.linspace(x1,x2,9)
+		yp=np.linspace(y1,y2,9)
+		m.plot(x1,y1,marker='s',markersize=15,color='g')
+		m.plot(x2,y2,marker='s',markersize=15,color='r')
+		m.plot(xp,yp,marker='s',markersize=5,color='k')
+		m.plot(x,y,color='k',linewidth=2)
+
+	' add rivers '
 	rivers=get_rivers(mmap=m)
 	ax.add_collection(rivers)
 
+	' add colorbar '
 	if colorbar:
 		im = m.imshow(dtm, cmap=cmap, vmin=0,vmax=800)
 		im.remove()
 		cb=m.colorbar(im)
 
+
+
+
 def get_rivers(mmap=None):
 
 	import shapefile
 	from matplotlib.patches import Polygon
-	# from matplotlib.collections import PatchCollection
 	from matplotlib.collections import LineCollection
 	
-	s=shapefile.Reader('./sonoma_rivers/sonoma_rivers')
+	shf='/home/rvalenzuela/Github/basemap_shaded/sonoma_rivers/sonoma_rivers'
+	s=shapefile.Reader(shf)
 
 	shapes=s.shapes()
 	Nshp=len(shapes)
@@ -150,24 +175,13 @@ def get_elevation(dtmfile=None,domain=None):
 	fx=interp1d(xg,range(len(xg)))
 	fy=interp1d(yg,range(len(yg)))
 
-	if domain == 0:
-		lonn=-124.0
-		lonx=-122.9
-		latx=39.1
-		latn=38.1
-		sigma=10
-	elif domain == 1:
-		lonn=-123.3
-		lonx=-122.9
-		latx=38.8
-		latn=38.3
-		sigma=8
-	elif domain == 2:
-		lonn=-123.3
-		lonx=-123.0
-		latx=38.7
-		latn=38.4
-		sigma=5
+	param=[]
+	param.append([-124.0, -122.0, 39.5, 38.0, 10])	
+	param.append([-124.0, -122.9, 39.1, 38.1, 10])	
+	param.append([-123.3, -122.9, 38.8, 38.3, 8])
+	param.append([-123.3, -123.0, 38.7, 38.4, 5])
+	
+	lonn,lonx,latx,latn,sigma=param[domain]
 
 	xini=int(fx(lonn))
 	xend=int(fx(lonx))
