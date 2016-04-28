@@ -2,6 +2,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
 import rof_denoise as denoise
+import Circlem
 
 from matplotlib.colors import LightSource
 from scipy.interpolate import interp1d, Rbf
@@ -14,9 +15,13 @@ from geographiclib.geodesic import Geodesic
 class elevation:
 
     def __init__(self, file_name=None, domain_num=None,
-                 linesec=None):
+                 domain=None, sigma=None, linesec=None,
+                 source=None):
         self.file_name = file_name
         self.domain_num = domain_num
+        self.domain = domain
+        self.sigma = sigma
+        self.source = source
         self.dtm = None
         self.latn = None
         self.latx = None
@@ -55,14 +60,17 @@ class elevation:
         fy = interp1d(yg, range(len(yg)))
 
         ' set of domains to plot '
-        param = []
-        param.append([-124.0, -122.0, 39.5, 38.0, 10])
-        param.append([-124.0, -122.9, 39.1, 38.1, 10])
-        param.append([-123.3, -122.9, 38.8, 38.3, 8])
-        param.append([-123.3, -123.0, 38.7, 38.4, 5])
-        param.append([-123.8, -122.55, 39.1, 38.2, 10])
-
-        lonn, lonx, latx, latn, sigma = param[self.domain_num]
+        if self.domain_num is not None:
+            param = []
+            param.append([-124.0, -122.0, 39.5, 38.0, 10])
+            param.append([-124.0, -122.9, 39.1, 38.1, 10])
+            param.append([-123.3, -122.9, 38.8, 38.3, 8])
+            param.append([-123.3, -123.0, 38.7, 38.4, 5])
+            param.append([-123.8, -122.55, 39.1, 38.2, 10])
+            lonn, lonx, latx, latn, sigma = param[self.domain_num]
+        else:
+            lonn, lonx, latx, latn = self.domain
+            sigma = self.sigma
 
         xini = int(fx(lonn))
         xend = int(fx(lonx))
@@ -85,6 +93,29 @@ class elevation:
                 profile.append(getDtmElevation(p[1], p[0], band, geotransform))
             self.profile = np.array(profile)
 
+    def get_dem_matfile(self):
+
+        import scipy.io as sio
+        mat = sio.loadmat(self.file_name)
+        dtm = np.flipud(mat['Z1'])
+        rows, cols = dtm.shape
+
+        latn, latx = mat['latlim'][0]
+        lonn, lonx = mat['lonlim'][0]
+        xlat = np.linspace(latn, latx, rows)
+        interpLat = interp1d(xlat, range(rows))
+        xlon = np.linspace(lonn, lonx, cols)
+        interpLon = interp1d(xlon, range(cols))
+
+        inX0 = int(interpLon(self.domain[0]))
+        inX1 = int(interpLon(self.domain[1]))
+        inY0 = int(interpLat(self.domain[2]))
+        inY1 = int(interpLat(self.domain[3]))
+
+        self.dtm = dtm[inY0:inY1, inX0:inX1]
+        self.latn, self.latx = self.domain[2:]
+        self.lonn, self.lonx = self.domain[:2]
+
     def plot_elevation_map(self, ax=None, shaded=True,
                            cmap=None, locations=None, colorbar=False,
                            blend_mode='overlay', grid=True,
@@ -94,13 +125,21 @@ class elevation:
         import os
         homed = os.path.expanduser('~')
 
-        ' get elevation model '
-        fname = 'merged_dem_38-39_123-124_extended.tif'
-        dtmfile = homed+'/Github/RadarQC/'+fname
+        pos = ax.get_position()
 
-        self.file_name = dtmfile
-        if self.dtm is None:
-            self.get_elevation()
+        ' get elevation model '
+        if self.source is not None:
+            fname = self.source
+            dtmfile = homed+'/DEM/'+fname
+            self.file_name = dtmfile
+            if self.dtm is None:
+                self.get_dem_matfile()
+        else:
+            fname = 'merged_dem_38-39_123-124_extended.tif'
+            dtmfile = homed+'/Github/RadarQC/'+fname
+            self.file_name = dtmfile
+            if self.dtm is None:
+                self.get_elevation()
 
         ' make map axis '
         m = Basemap(projection='merc',
@@ -108,7 +147,7 @@ class elevation:
                     urcrnrlat=self.latx,
                     llcrnrlon=self.lonn,
                     urcrnrlon=self.lonx,
-                    resolution='c',
+                    resolution='h',
                     ax=ax)
 
         vmin, vmax = altitude_range
@@ -174,7 +213,12 @@ class elevation:
                 np.linspace(self.lonn, self.lonx, nlons),
                 np.linspace(self.latn, self.latx, nlats))
             x, y = m(lons, lats)
-            m.contour(x, y, self.dtm, [800, 1000], colors='k')
+            m.contour(x, y, self.dtm, contour_lines, colors='k')
+
+        ' add coastline'
+        m.drawcoastlines()
+
+        return m
 
     def plot_elevation_profile(self, ax=None, npoints=500):
 
@@ -194,32 +238,80 @@ class elevation:
         ax.set_ylabel('Altitude [m]')
 
 
-def main(plot=False):
+def plot_terrain_profile():
+
     from matplotlib import gridspec
+    warm = make_cmap(colors='warm_humid')
 
-    if plot:
-        # arid = make_cmap(colors='arid', bit=True)
-        # cold = make_cmap(colors='cold_humid', bit=True)
-        warm = make_cmap(colors='warm_humid')
+    loc1 = {'BBY': (38.32, -123.07), 'CZD': (38.61, -123.22)}
+    loc2 = {'BBY': (38.32, -123.07), 'FRS': (38.51, -123.25),
+            'CZD': (38.61, -123.22)}
+    linesec = {'origin': (38.29, -123.59),
+               'az': 50, 'dist': 110, 'ndiv': 0}
+    elev = elevation(linesec=linesec, domain_num=4)
 
-        loc1 = {'BBY': (38.32, -123.07), 'CZD': (38.61, -123.22)}
-        loc2 = {'BBY': (38.32, -123.07), 'FRS': (38.51, -123.25)}
-        linesec = {'origin': (38.29, -123.59),
-                   'az': 50, 'dist': 110, 'ndiv': 0}
-        elev = elevation(linesec=linesec, domain_num=4)
+    fig = plt.figure(figsize=(8.5, 11))
+    gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
+    ax0 = plt.subplot(gs[0])
+    ax1 = plt.subplot(gs[1])
+    elev.plot_elevation_map(ax=ax0, cmap=warm, shaded=False,
+                            locations=loc2, colorbar=True, grid=False,
+                            altitude_range=[0, 800],
+                            contour_lines=[800, 1000],
+                            latdelta=0.1, londelta=0.2
+                            )
+    elev.plot_elevation_profile(ax=ax1)
+    plt.show(block=False)
 
-        fig = plt.figure(figsize=(8.5, 11))
-        gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
-        ax0 = plt.subplot(gs[0])
-        ax1 = plt.subplot(gs[1])
-        elev.plot_elevation_map(ax=ax0, cmap=warm, shaded=False,
-                                locations=loc2, colorbar=True, grid=False,
-                                altitude_range=[0, 800],
-                                contour_lines=[800, 1000],
+
+def plot_obs_domain():
+
+    warm = make_cmap(colors='warm_humid')
+
+    locs = {'BBY': (38.32, -123.07),
+            'FRS': (38.51, -123.25),
+            'CZD': (38.61, -123.22),
+            'Petaluma': (38.232, -122.636)}
+
+    linesec = {'origin': (38.29, -123.59),
+               'az': 50, 'dist': 110, 'ndiv': 0}
+
+    fig, ax = plt.subplots()
+    elev = elevation(linesec=linesec, domain=[-124.0, -122.0, 37.8, 39.38],
+                     source='BNCaliforniaDEM.mat')
+    m = elev.plot_elevation_map(ax=ax, cmap=warm, shaded=False,
+                                locations=locs, colorbar=True, grid=False,
+                                altitude_range=[-5, 800],
+                                contour_lines=[800],
                                 latdelta=0.1, londelta=0.2
                                 )
-        elev.plot_elevation_profile(ax=ax1)
-        plt.show(block=False)
+
+    add_rings(ax, space_km=10, color='k', mapping=[m, 38.51, -123.25])
+
+    plt.show(block=False)
+
+
+def plot_petaluma_gap():
+
+    warm = make_cmap(colors='warm_humid')
+
+    locs = {'BBY': (38.32, -123.07),
+            'FRS': (38.51, -123.25),
+            'CZD': (38.61, -123.22),
+            'Petaluma': (38.232, -122.636),
+            'SCK': (37.93, -121.22)}
+
+    fig, ax = plt.subplots()
+
+    elev = elevation(domain=[-123.5, -121, 37.7, 38.7],
+                     source='NCalDEMforGapFlow.mat')
+    elev.plot_elevation_map(ax=ax, cmap=warm, shaded=False,
+                            locations=locs, colorbar=False, grid=False,
+                            altitude_range=[-9, 800],
+                            contour_lines=[800],
+                            latdelta=0.1, londelta=0.2
+                            )
+    plt.show(block=False)
 
 
 def interpolateLine(start_point, finish_point, number_points):
@@ -338,3 +430,39 @@ def hp_filter(array):
     hp = ndimage.convolve(array, kernel)
     filtered = array-hp
     return filtered
+
+
+def add_rings(ax, space_km=10, color='k', mapping=False):
+
+    # textdirection=225
+    textdirection = -5
+
+    for r in range(0, 60 + space_km, space_km):
+
+        ring = add_ring(ax=ax, radius=r, mapping=mapping, color=color)
+        vert = ring.get_path().vertices
+        x, y = vert[textdirection]
+        # ax.text(x * r, y * r, str(r), ha='center', va='center',
+        #         bbox=dict(fc='none', ec='none', pad=2.),
+        #         clip_on=True)
+
+
+def add_ring(ax=None, radius=None, mapping=False, color=None, lw=1):
+
+    from shapely.geometry import Polygon
+    from descartes import PolygonPatch
+
+    if mapping:
+        m = mapping[0]
+        olat = mapping[1]
+        olon = mapping[2]
+        c = Circlem.circle(m, olat, olon, radius * 1000.)
+        circraw = Polygon(c)
+        circ = PolygonPatch(circraw, fc='none', ec=color)
+    else:
+        circ = plt.Circle((0, 0), radius, fill=False,
+                          color=color, linewidth=lw)
+
+    ax.add_patch(circ)
+
+    return circ
