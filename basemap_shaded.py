@@ -1,14 +1,14 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
-import rof_denoise as denoise
+# import rof_denoise as denoise
 import Circlem
 
 from matplotlib.colors import LightSource
 from scipy.interpolate import interp1d, Rbf
 from scipy import ndimage
 from custom_cmap import make_cmap
-from mpl_toolkits.basemap import Basemap, cm
+from mpl_toolkits.basemap import Basemap
 from geographiclib.geodesic import Geodesic
 
 
@@ -117,26 +117,30 @@ class elevation:
         self.lonn, self.lonx = self.domain[:2]
 
     def plot_elevation_map(self, ax=None, shaded=True,
-                           cmap=None, locations=None, colorbar=False,
-                           blend_mode='overlay', grid=True,
-                           altitude_range=None, contour_lines=None,
-                           latdelta=None, londelta=None):
+                           cmap=None, locations=None,
+                           colorbar=False, blend_mode='overlay',
+                           grid=True, altitude_range=None,
+                           contour_lines=None,
+                           latdelta=None, londelta=None,
+                           homed=None,
+                           addrivers=True):
 
         import os
-        homed = os.path.expanduser('~')
+        if homed is None:
+        	homed = os.path.expanduser('~')
 
-        pos = ax.get_position()
+        # pos = ax.get_position()
 
         ' get elevation model '
         if self.source is not None:
             fname = self.source
-            dtmfile = homed+'/DEM/'+fname
+            dtmfile = homed + '/' + fname
             self.file_name = dtmfile
             if self.dtm is None:
                 self.get_dem_matfile()
         else:
             fname = 'merged_dem_38-39_123-124_extended.tif'
-            dtmfile = homed+'/Github/RadarQC/'+fname
+            dtmfile = homed + '/Github/RadarQC/' + fname
             self.file_name = dtmfile
             if self.dtm is None:
                 self.get_elevation()
@@ -167,18 +171,24 @@ class elevation:
         lw = 0
         if grid:
             lw = 1.
-        m.drawparallels(parallels,
+        parallels = m.drawparallels(parallels,
                         labels=[1, 0, 0, 0], fontsize=10,
                         labelstyle='+/-', fmt='%2.1f', linewidth=lw)
         m.drawmeridians(meridians,
                         labels=[0, 0, 0, 1], fontsize=10,
                         labelstyle='+/-', fmt='%2.1f', linewidth=lw)
 
+        for p in parallels:
+            try:
+                parallels[p][1][0].set_rotation(90)
+            except:
+                pass
+
         ' add locations '
         if locations:
             for loc, coord in locations.iteritems():
                 x, y = m(*coord[::-1])
-                m.scatter(x, y, 80, color='red')
+                m.scatter(x, y, 30, color='k')
                 ax.text(x, y, loc, ha='right', va='bottom')
 
         ' add section line '
@@ -197,8 +207,9 @@ class elevation:
                 m.plot(xp, yp, marker='s', markersize=5, color='k')
 
         ' add rivers '
-        rivers = get_rivers(mmap=m)
-        ax.add_collection(rivers)
+        if addrivers:
+            rivers = get_rivers(mmap=m)
+            ax.add_collection(rivers)
 
         ' add colorbar '
         if colorbar:
@@ -264,9 +275,10 @@ def plot_terrain_profile():
     plt.show(block=False)
 
 
-def plot_obs_domain():
+def plot_obs_domain(ax=None, cmap=None):
 
-    warm = make_cmap(colors='warm_humid')
+    if cmap is None:
+        warm = make_cmap(colors='warm_humid')
 
     locs = {'BBY': (38.32, -123.07),
             'FRS': (38.51, -123.25),
@@ -276,24 +288,31 @@ def plot_obs_domain():
     linesec = {'origin': (38.29, -123.59),
                'az': 50, 'dist': 110, 'ndiv': 0}
 
-    fig, ax = plt.subplots()
-    elev = elevation(linesec=linesec, domain=[-124.0, -122.0, 37.8, 39.38],
+    if ax is None:
+        fig, ax = plt.subplots()
+
+    elev = elevation(linesec=linesec,
+                     domain=[-124.0, -122.0, 37.8, 39.38],
                      source='BNCaliforniaDEM.mat')
-    m = elev.plot_elevation_map(ax=ax, cmap=warm, shaded=False,
-                                locations=locs, colorbar=True, grid=False,
+
+    m = elev.plot_elevation_map(ax=ax, cmap=cmap, shaded=False,
+                                locations=locs, colorbar=True,
+                                grid=False,
                                 altitude_range=[-5, 800],
                                 contour_lines=[800],
-                                latdelta=0.1, londelta=0.2
-                                )
+                                latdelta=0.2, londelta=0.2,
+                                addrivers=False,
+                                homed='/home/raul/Dropbox/NOCAL_DEM')
 
     add_rings(ax, space_km=10, color='k', mapping=[m, 38.51, -123.25])
 
     plt.show(block=False)
 
 
-def plot_petaluma_gap():
+def plot_petaluma_gap(ax=None,cmap=None):
 
-    warm = make_cmap(colors='warm_humid')
+    if cmap is None:
+        warm = make_cmap(colors='warm_humid')
 
     locs = {'BBY': (38.32, -123.07),
             'FRS': (38.51, -123.25),
@@ -301,16 +320,18 @@ def plot_petaluma_gap():
             'Petaluma': (38.232, -122.636),
             'SCK': (37.93, -121.22)}
 
-    fig, ax = plt.subplots()
+    if ax is None:
+        fig, ax = plt.subplots()
 
     elev = elevation(domain=[-123.5, -121, 37.7, 38.7],
                      source='NCalDEMforGapFlow.mat')
-    elev.plot_elevation_map(ax=ax, cmap=warm, shaded=False,
+    elev.plot_elevation_map(ax=ax, cmap=cmap, shaded=False,
                             locations=locs, colorbar=False, grid=False,
                             altitude_range=[-9, 800],
                             contour_lines=[800],
-                            latdelta=0.1, londelta=0.2
-                            )
+                            latdelta=0.2, londelta=0.2,
+                            addrivers=False,
+                            homed='/home/raul/Dropbox/NOCAL_DEM')
     plt.show(block=False)
 
 
@@ -365,7 +386,7 @@ def get_rivers(mmap=None):
     from matplotlib.patches import Polygon
     from matplotlib.collections import LineCollection
 
-    shf = '/home/rvalenzuela/Github/basemap_shaded/sonoma_rivers/sonoma_rivers'
+    shf = '/home/raul/Github/basemap_shaded/sonoma_rivers/sonoma_rivers'
     s = shapefile.Reader(shf)
 
     shapes = s.shapes()
