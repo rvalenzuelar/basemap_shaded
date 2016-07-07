@@ -93,9 +93,11 @@ class elevation:
                 profile.append(getDtmElevation(p[1], p[0], band, geotransform))
             self.profile = np.array(profile)
 
-    def get_dem_matfile(self):
+    def get_dem_matfile(self,resample=None):
 
         import scipy.io as sio
+        from scipy.interpolate import RectBivariateSpline as spline
+        
         mat = sio.loadmat(self.file_name)
         dtm = np.flipud(mat['Z1'])
         rows, cols = dtm.shape
@@ -111,10 +113,25 @@ class elevation:
         inX1 = int(interpLon(self.domain[1]))
         inY0 = int(interpLat(self.domain[2]))
         inY1 = int(interpLat(self.domain[3]))
+        dtm_out = dtm[inY0:inY1, inX0:inX1]
+        
+        if resample is None:
+            self.dtm = dtm_out
+        else:
+            rows,cols = dtm_out.shape
+            spl = spline(range(rows),range(cols),dtm_out)            
+            ri = np.linspace(0,rows,resample[0])
+            ci = np.linspace(0,cols,resample[1])
+            Xi,Yi = np.meshgrid(ci,ri)
+            xif,yif = Xi.flatten(), Yi.flatten()
+            zi = np.zeros((resample[0],resample[1])).flatten()
+            for n,x,y in zip(range(zi.size),yif,xif):
+                zi[n] = spl.ev(x,y)
+            self.dtm = np.reshape(zi,(resample[0],resample[1]))
 
-        self.dtm = dtm[inY0:inY1, inX0:inX1]
         self.latn, self.latx = self.domain[2:]
         self.lonn, self.lonx = self.domain[:2]
+            
 
     def plot_elevation_map(self, ax=None, shaded=True,
                            cmap=None, locations=None,

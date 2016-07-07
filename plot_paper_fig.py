@@ -12,10 +12,10 @@ ax2 = plt.subplot(gs[1])
 
 cmap = plt.get_cmap('terrain')
 # cmap = plt.get_cmap('gist_earth')
-newcmap = truncate_colormap(cmap,0.35,0.9)
-newcmap.set_under('w')
+#newcmap = truncate_colormap(cmap,0.35,0.9)
+#newcmap.set_under('w')
 
-bs.plot_obs_domain(ax=ax1, cmap=newcmap)
-bs.plot_petaluma_gap(ax=ax2,cmap=newcmap)
+bs.plot_obs_domain(ax=ax1, cmap=cmap)
+bs.plot_petaluma_gap(ax=ax2,cmap=cmap)
 
 plt.show(block=False)
