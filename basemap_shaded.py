@@ -289,7 +289,6 @@ def plot_terrain_profile():
                             latdelta=0.1, londelta=0.2
                             )
     elev.plot_elevation_profile(ax=ax1)
-    plt.show(block=False)
 
 
 def plot_obs_domain(ax=None, cmap=None):
@@ -323,8 +322,6 @@ def plot_obs_domain(ax=None, cmap=None):
 
     add_rings(ax, space_km=10, color='k', mapping=[m, 38.51, -123.25])
 
-    plt.show(block=False)
-
 
 def plot_petaluma_gap(ax=None,cmap=None):
 
@@ -349,7 +346,6 @@ def plot_petaluma_gap(ax=None,cmap=None):
                             latdelta=0.2, londelta=0.2,
                             addrivers=False,
                             homed='/home/raul/Dropbox/NOCAL_DEM')
-    plt.show(block=False)
 
 
 def interpolateLine(start_point, finish_point, number_points):
