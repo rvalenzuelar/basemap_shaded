@@ -10,13 +10,21 @@ from scipy import ndimage
 from custom_cmap import make_cmap
 from mpl_toolkits.basemap import Basemap
 from geographiclib.geodesic import Geodesic
+from rv_utilities import add_colorbar
 
+
+locations = {'BBY': (38.32, -123.07),
+             'FRS': (38.52, -123.25),
+             'CZD': (38.61, -123.22),
+             'Petaluma': (38.232, -122.636),
+             'SCK': (37.93, -121.22)
+             }
 
 class elevation:
 
     def __init__(self, file_name=None, domain_num=None,
-                 domain=None, sigma=None, linesec=None,
-                 source=None):
+                 domain=None, sigma=None, source=None):
+        
         self.file_name = file_name
         self.domain_num = domain_num
         self.domain = domain
@@ -29,9 +37,10 @@ class elevation:
         self.lonx = None
         self.profile_line = None
         self.profile_elevation = None
-        self.linesec = linesec
         self.line_x = None
         self.line_y = None
+        self.lats = None
+        self.lons = None
 
     def get_elevation(self, line=None):
 
@@ -55,7 +64,7 @@ class elevation:
 
         xg = np.linspace(originX, endingX, cols)
         yg = np.linspace(originY, endingY, rows)
-
+        
         fx = interp1d(xg, range(len(xg)))
         fy = interp1d(yg, range(len(yg)))
 
@@ -69,8 +78,7 @@ class elevation:
             param.append([-123.8, -122.55, 39.1, 38.2, 10])
             lonn, lonx, latx, latn, sigma = param[self.domain_num]
         else:
-            lonn, lonx, latx, latn = self.domain
-            sigma = self.sigma
+            lonn, lonx, latx, latn, sigma = self.domain
 
         xini = int(fx(lonn))
         xend = int(fx(lonx))
@@ -81,11 +89,15 @@ class elevation:
         if self.dtm is None:
             source = band.ReadAsArray(xini, yini, (xend-xini), (yend-yini))
             dtm = gaussian_filter(source, sigma=sigma)
+            nlats,nlons = dtm.shape
             self.dtm = np.flipud(dtm)
             self.latn = latn
             self.latx = latx
             self.lonn = lonn
             self.lonx = lonx
+            self.lats = np.linspace(latn,latx,nlats)
+            self.lons = np.linspace(lonn,lonx,nlons)
+
 
         if line is not None:
             profile = []
@@ -134,19 +146,21 @@ class elevation:
             
 
     def plot_elevation_map(self, ax=None, shaded=True,
-                           cmap=None, locations=None,
-                           colorbar=False, blend_mode='overlay',
-                           grid=True, altitude_range=None,
+                           cmap=None, add_loc=None,
+                           colorbar=True, blend_mode='overlay',
+                           grid=True, gridcolor='w',
+                           altitude_range=[-10,600],
                            contour_lines=None,
                            latdelta=None, londelta=None,
-                           homed=None,
-                           addrivers=True):
+                           homed=None, figsize=None,
+                           addrivers=False,
+                           add_geoline=None):
 
         import os
+        
         if homed is None:
-        	homed = os.path.expanduser('~')
+            homed = os.path.expanduser('~')
 
-        # pos = ax.get_position()
 
         ' get elevation model '
         if self.source is not None:
@@ -162,6 +176,12 @@ class elevation:
             if self.dtm is None:
                 self.get_elevation()
 
+        if ax is None:
+            if figsize is None:
+                fig,ax = plt.subplots(figsize=(10,10))
+            else:
+                fig,ax = plt.subplots(figsize=figsize)
+
         ' make map axis '
         m = Basemap(projection='merc',
                     llcrnrlat=self.latn,
@@ -176,8 +196,12 @@ class elevation:
         if shaded:
             ' make hill shaded image '
             ls = LightSource(azdeg=15, altdeg=60)
-            rgb = ls.shade(self.dtm, cmap=cmap, vmin=vmin, vmax=vmax,
-                           blend_mode='soft', fraction=0.7)
+            rgb = ls.shade(self.dtm,
+                           cmap=getattr(plt.cm,cmap),
+                           vmin=vmin,
+                           vmax=vmax,
+                           blend_mode='soft',
+                           fraction=0.7)
             m.imshow(rgb)
         else:
             m.imshow(self.dtm, cmap=cmap, vmin=vmin, vmax=vmax)
@@ -190,10 +214,12 @@ class elevation:
             lw = 1.
         parallels = m.drawparallels(parallels,
                         labels=[1, 0, 0, 0], fontsize=10,
-                        labelstyle='+/-', fmt='%2.1f', linewidth=lw)
+                        labelstyle='+/-', fmt='%2.1f',linewidth=lw,
+                        color=gridcolor)
         m.drawmeridians(meridians,
                         labels=[0, 0, 0, 1], fontsize=10,
-                        labelstyle='+/-', fmt='%2.1f', linewidth=lw)
+                        labelstyle='+/-', fmt='%2.1f', linewidth=lw,
+                        color=gridcolor)
 
         for p in parallels:
             try:
@@ -202,26 +228,60 @@ class elevation:
                 pass
 
         ' add locations '
-        if locations:
-            for loc, coord in locations.iteritems():
-                x, y = m(*coord[::-1])
-                m.scatter(x, y, 30, color='k')
-                ax.text(x, y, loc, ha='right', va='bottom')
+        if add_loc:
+            fsize = 15
+            psize = 50
+            ec = (1.0,0,0,1)
+            fc = (0.5,0,0,1)
+            if isinstance(add_loc,dict):
+                for loc, coord in locations.iteritems():
+                    x, y = m(*coord[::-1])
+                    m.scatter(x, y, psize, color='r')
+                    ax.text(x, y, loc, ha='right', va='bottom',
+                            color='r',fontsize=fsize,weight='bold')
+            elif isinstance(add_loc,list):
+                for loc in add_loc:
+                    coord = locations[loc]
+                    x, y = m(*coord[::-1])
+                    m.scatter(x, y, psize, facecolor=fc,edgecolor=ec)
+                    ax.text(x, y, loc, ha='right', va='bottom',
+                            color='r',fontsize=fsize,weight='bold')                
 
         ' add section line '
-        if self.linesec is not None:
-            x, y = get_line_ini_end(self)
-            self.line_x = x
-            self.line_y = y
-            x, y = m(*[x, y])
-            m.plot(x, y, color='k', linewidth=2)
-            ndiv = self.linesec['ndiv']
-            if ndiv > 0:
-                xp = np.linspace(x[0], x[1], ndiv)
-                yp = np.linspace(y[0], y[1], ndiv)
-                # m.plot(x1, y1, marker='s', markersize=15, color='g')
-                # m.plot(x2, y2, marker='s', markersize=15, color='r')
-                m.plot(xp, yp, marker='s', markersize=5, color='k')
+        if add_geoline:
+            if isinstance(add_geoline,dict):
+                geolines = list(add_geoline)
+            elif isinstance(add_geoline,list):
+                geolines = add_geoline
+                
+            for line in geolines:                
+                x, y = get_line_ini_end(line)
+                self.line_x = x
+                self.line_y = y
+                x, y = m(*[x, y])
+    
+                if 'color' in line:
+                    color = line['color']
+                else:
+                    color='k'
+                    
+                m.plot(x, y, color=color, linewidth=2)
+    
+                if 'ndiv' in line:
+                    ndiv = line['ndiv']
+                    xp = np.linspace(x[0], x[1], ndiv)
+                    yp = np.linspace(y[0], y[1], ndiv)
+                    m.plot(xp, yp, marker='s',
+                           markersize=5, color=color)
+                
+                if 'label' in line:
+                    if 'center' in line:
+                        x,y = m(*line['center'][::-1])
+                        ax.text(x,y,line['label']+r'$^\circ$',
+                                color=color,
+                                weight='bold',
+                                fontsize=15,
+                                rotation=90-line['az'])
 
         ' add rivers '
         if addrivers:
@@ -232,7 +292,7 @@ class elevation:
         if colorbar:
             im = m.imshow(self.dtm, cmap=cmap, vmin=vmin, vmax=vmax)
             im.remove()
-            cb = m.colorbar(im)
+            add_colorbar(ax,im,label='Meters')
 
         ' add contour line(s) '
         if contour_lines is not None:
@@ -244,9 +304,8 @@ class elevation:
             m.contour(x, y, self.dtm, contour_lines, colors='k')
 
         ' add coastline'
-        m.drawcoastlines()
+        m.drawcoastlines(color='w')
 
-        return m
 
     def plot_elevation_profile(self, ax=None, npoints=500):
 
@@ -271,22 +330,22 @@ def plot_terrain_profile():
     from matplotlib import gridspec
     warm = make_cmap(colors='warm_humid')
 
-    loc1 = {'BBY': (38.32, -123.07), 'CZD': (38.61, -123.22)}
-    loc2 = {'BBY': (38.32, -123.07), 'FRS': (38.51, -123.25),
-            'CZD': (38.61, -123.22)}
     linesec = {'origin': (38.29, -123.59),
                'az': 50, 'dist': 110, 'ndiv': 0}
-    elev = elevation(linesec=linesec, domain_num=4)
+               
+    elev = elevation(domain_num=4)
 
-    fig = plt.figure(figsize=(8.5, 11))
+    plt.figure(figsize=(8.5, 11))
     gs = gridspec.GridSpec(2, 1, height_ratios=[3, 1])
     ax0 = plt.subplot(gs[0])
     ax1 = plt.subplot(gs[1])
     elev.plot_elevation_map(ax=ax0, cmap=warm, shaded=False,
-                            locations=loc2, colorbar=True, grid=False,
+                            add_loc=['BBY','FRS','CZD'],
+                            colorbar=True, grid=False,
                             altitude_range=[0, 800],
                             contour_lines=[800, 1000],
-                            latdelta=0.1, londelta=0.2
+                            latdelta=0.1, londelta=0.2,
+                            add_geoline=linesec,
                             )
     elev.plot_elevation_profile(ax=ax1)
 
@@ -295,11 +354,6 @@ def plot_obs_domain(ax=None, cmap=None):
 
     if cmap is None:
         warm = make_cmap(colors='warm_humid')
-
-    locs = {'BBY': (38.32, -123.07),
-            'FRS': (38.51, -123.25),
-            'CZD': (38.61, -123.22),
-            'Petaluma': (38.232, -122.636)}
 
     linesec = {'origin': (38.29, -123.59),
                'az': 50, 'dist': 110, 'ndiv': 0}
@@ -312,7 +366,9 @@ def plot_obs_domain(ax=None, cmap=None):
                      source='BNCaliforniaDEM.mat')
 
     m = elev.plot_elevation_map(ax=ax, cmap=cmap, shaded=False,
-                                locations=locs, colorbar=True,
+                                add_loc=['FRS','BBY','CZD','Petaluma'],
+                                colorbar=True,
+                                add_geoline=linesec,
                                 grid=False,
                                 altitude_range=[-5, 800],
                                 contour_lines=[800],
@@ -327,12 +383,6 @@ def plot_petaluma_gap(ax=None,cmap=None):
 
     if cmap is None:
         warm = make_cmap(colors='warm_humid')
-
-    locs = {'BBY': (38.32, -123.07),
-            'FRS': (38.51, -123.25),
-            'CZD': (38.61, -123.22),
-            'Petaluma': (38.232, -122.636),
-            'SCK': (37.93, -121.22)}
 
     if ax is None:
         fig, ax = plt.subplots()
@@ -371,23 +421,30 @@ def getDtmElevation(x, y, band, gt):
     return col[0]
 
 
-def get_line_ini_end(elev):
+def get_line_ini_end(geoline):
 
-    linesec = elev.linesec
-    if isinstance(linesec, dict):
-        x1, y1 = linesec['origin'][::-1]
-        x2, y2 = get_arrival_point(linesec)[::-1]
-    elif isinstance(linesec, list):
-        x1, y1 = linesec[0][::-1]
-        x2, y2 = linesec[1][::-1]
+    if isinstance(geoline, dict):
+        if 'origin' in geoline:
+            x1, y1 = geoline['origin'][::-1]
+            azi = geoline['az']
+            dist = geoline['dist']*1000  # [m]            
+            x2, y2 = get_arrival_point(y1,x1,azi,dist)[::-1]
+        elif 'center' in geoline:
+            x0, y0 = geoline['center'][::-1]
+            azi = geoline['az']
+            dist = geoline['dist']*1000  # [m]            
+            x1, y1 = get_arrival_point(y0,x0,azi,dist)[::-1]            
+            x2, y2 = get_arrival_point(y0,x0,azi+180,dist)[::-1]            
+            
+    elif isinstance(geoline, list):
+        x1, y1 = geoline[0][::-1]
+        x2, y2 = geoline[1][::-1]
+        
     return [[x1, x2], [y1, y2]]
 
 
-def get_arrival_point(linesec):
+def get_arrival_point(lat,lon,azi,dist):
 
-    lat, lon = linesec['origin']
-    azi = linesec['az']
-    dist = linesec['dist']*1000  # [m]
     gd = Geodesic.WGS84.Direct(lat, lon, azi, dist)
 
     return gd['lat2'], gd['lon2']
@@ -396,7 +453,7 @@ def get_arrival_point(linesec):
 def get_rivers(mmap=None):
 
     import shapefile
-    from matplotlib.patches import Polygon
+#    from matplotlib.patches import Polygon
     from matplotlib.collections import LineCollection
 
     shf = '/home/raul/Github/basemap_shaded/sonoma_rivers/sonoma_rivers'
@@ -418,22 +475,50 @@ def get_rivers(mmap=None):
     return lines
 
 
-def plot_map(ax=None, domain=0, cmap=plt.cm.gist_earth, blend_mode='overlay'):
+def plot_map(ax=None, domain=2, cmap='gist_earth', blend_mode='overlay'):
 
-    dtmfile = '/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
 
-    dtm, _ = get_elevation(dtmfile=dtmfile, domain=domain)
+    if ax is None:
+        fig,ax=plt.subplots(figsize=(10,10))
+
+#    dtmfile = '/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
+    dtmfile = '/home/raul/Dropbox/NOCAL_DEM/merged_dem_38-39_123-124_extended.tif'
+
+    elev = elevation(file_name = dtmfile,
+                     domain    = [-123.4, -122.8, 38.8, 38.1, 8])
+
+    elev.get_elevation()
+
+    elev_lims=[0,700]
 
     ls = LightSource(azdeg=15, altdeg=60)
-    rgb = ls.shade(dtm, cmap=cmap, vmin=0, vmax=1000,
-                   blend_mode='soft', fraction=0.7)
+    rgb = ls.shade(elev.dtm,
+                   cmap=getattr(plt.cm,cmap),
+                   vmin=elev_lims[0],
+                   vmax=elev_lims[1],
+                   blend_mode='soft',
+                   fraction=0.7)
+    
     ax.imshow(rgb)
-
+    
     'Use a proxy artist for the colorbar'
-    im = ax.imshow(dtm, cmap=cmap, vmin=0, vmax=1000,)
+    im = ax.imshow(elev.dtm,
+                   cmap=cmap,
+                   vmin=elev_lims[0],
+                   vmax=elev_lims[1],
+                   origin='lower',
+                   )
+    
     im.remove()
-    plt.colorbar(im)
+    add_colorbar(ax,im,label='Meters')
 
+
+def rgb2gray(rgb):
+
+    r, g, b = rgb[:,:,0], rgb[:,:,1], rgb[:,:,2]
+    gray = 0.2989 * r + 0.5870 * g + 0.1140 * b
+
+    return gray
 
 def interp_rbf(array, x, y, res=10):
 
