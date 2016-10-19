@@ -475,21 +475,25 @@ def get_rivers(mmap=None):
     return lines
 
 
-def plot_map(ax=None, domain=2, cmap='gist_earth', blend_mode='overlay'):
+def plot_shaded_map(ax=None, cmap='gist_earth',saveto=None):
 
 
     if ax is None:
-        fig,ax=plt.subplots(figsize=(10,10))
+        scale = 0.7
+        fig,ax = plt.subplots(figsize=(10*scale,10*scale))
 
 #    dtmfile = '/home/raul/Github/RadarQC/merged_dem_38-39_123-124_extended.tif'
-    dtmfile = '/home/raul/Dropbox/NOCAL_DEM/merged_dem_38-39_123-124_extended.tif'
+#     dtmfile = '/home/raul/Dropbox/NOCAL_DEM/merged_dem_38-39_123-124_extended.tif'
+    dtmfile = '/Users/raulvalenzuela/Dropbox/NOCAL_DEM/merged_dem_38-39_123-124_extended.tif'
 
-    elev = elevation(file_name = dtmfile,
-                     domain    = [-123.4, -122.8, 38.8, 38.1, 8])
+
+    domain = [-123.4, -122.8, 38.8, 38.1, 8]
+    elev = elevation(file_name=dtmfile,
+                     domain=domain)
 
     elev.get_elevation()
 
-    elev_lims=[0,700]
+    elev_lims = [0,700]
 
     ls = LightSource(azdeg=15, altdeg=60)
     rgb = ls.shade(elev.dtm,
@@ -500,7 +504,23 @@ def plot_map(ax=None, domain=2, cmap='gist_earth', blend_mode='overlay'):
                    fraction=0.7)
     
     ax.imshow(rgb)
-    
+
+    " interpolate latlon to cartesian coords"
+    nrows, ncols = elev.dtm.shape
+    flat = interp1d(np.linspace(domain[3],domain[2],nrows),
+                    range(nrows))
+    flon = interp1d(np.linspace(domain[0], domain[1], ncols),
+                    range(ncols))
+
+    lat, lon = locations['FRS']
+    ax.scatter(flon(lon), flat(lat), color='r',s=50)
+
+    lat, lon = locations['BBY']
+    ax.scatter(flon(lon), flat(lat), color='r',s=50)
+
+    lat, lon = locations['CZD']
+    ax.scatter(flon(lon), flat(lat), color='r',s=50)
+
     'Use a proxy artist for the colorbar'
     im = ax.imshow(elev.dtm,
                    cmap=cmap,
@@ -508,9 +528,21 @@ def plot_map(ax=None, domain=2, cmap='gist_earth', blend_mode='overlay'):
                    vmax=elev_lims[1],
                    origin='lower',
                    )
-    
+
+
     im.remove()
     add_colorbar(ax,im,label='Meters')
+
+    ax.set_xticklabels('')
+    ax.set_yticklabels('')
+
+    plt.tight_layout()
+
+    if saveto is not None:
+        fname = 'shaded_terrain.png'
+        plt.savefig(saveto + fname,
+                    dpi=300, format='png', papertype='letter',
+                    bbox_inches='tight')
 
 
 def rgb2gray(rgb):
